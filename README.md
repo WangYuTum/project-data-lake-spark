@@ -135,7 +135,7 @@ In the mean time, you can monitor the spark job using Spark UI.
 We only provide instructions on runing queries on EMR notebook, however the same queries can also be run locally if you choose to run the project locally.
 
 #### Create EMR Notebook
-Create an EMR notebook and attach the notebook to previously created cluster.
+Create an EMR notebook and attach the notebook to previously(or newly) created cluster.
 
 #### Run Queries in notebook
 
