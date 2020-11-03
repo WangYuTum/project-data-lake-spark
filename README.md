@@ -56,17 +56,91 @@ given in the project, the star schema looks like this (generated using [LucidCha
 
 ## Usage and Sample Results
 There are 2 ways to run this project:<br/>
-1. Locally on your machine with Python Notebook or Python script
-2. On AWS EMR cluster (requires AWS credentials)
+1. Locally on your machine with Jupyter-notebook (elt-test.ipynb) or Python script (etl.py)
+2. On AWS EMR cluster (requires AWS credentials)<br/>
+
+We encourage you run this project locally first to make sure everthing's working such as Software/Package APIs compatibility. 
 However, you can run sample queries either locally on your machine or on AWS cluster.
 
 ### Run locally
-
+**IMPORTANT IMPORTANT IMPORTANT** you must comment/uncomment codes in ``main()`` function.
+- Using notebook **elt-test.ipynb** and following the step-by-step instructions
+- **OR** using script **etl.py**, run the script with following command:<br/>
+``spark-submit --master local etl.py``
 
 ### Run on AWS EMR cluster
+This requires you to create EMR cluster, secure copy script to master node, SSH to master node and submit spark job.<br/>
+**IMPORTANT IMPORTANT IMPORTANT** you must comment/uncomment codes in ``main()`` function.
+
+#### Step 1. Configure AWS Credentials (required to create EMR Cluster via AWS CLI)
+- Save your credentials (**aws_access_key_id**, **aws_secret_access_key**) to ``~/.aws/credentials`` on your machine
+- **OR** export to environment variables:
+<br    >``export AWS_ACCESS_KEY_ID=<your_access_key_id>`` 
+<br    >``export AWS_SECRET_ACCESS_KEY=<your_secret_access_key>``<br/><br/>
+For more info, reference to this [guide](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html).
+
+#### Step 2. Setup AWS Region
+- Save your region name to ``~/.aws/config`` on your machine
+- **OR** export to environment variables:
+<br    >``export AWS_DEFAULT_REGION=us-west-2``<br/><br/>
+For more info, reference to this [guide](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html).
+
+#### Step 3. Create SSH Key-Pair (required to SSH remote login)
+- Follow this [guide](https://docs.aws.amazon.com/emr/latest/ManagementGuide/emr-connect-master-node.html) to create SSH key-pair and 
+configure inbound rules for SSH
+- Save your secret key file to ``~/.ssh/``
+
+#### Step 4. Create AWS EMR Cluster
+Using the following AWS CLI command:
+```
+aws emr create-cluster --name <YOUR_CLUSTER_NAME> \
+--use-default-roles \
+--release-label emr-6.1.0 \
+--instance-count 4 \
+--instance-type m5.xlarge \
+--applications Name=Spark Name=Hadoop Name=Livy \
+--ec2-attributes KeyName=<YOUR_KEY_NAME>,SubnetId=<YOUR_SUBNET_ID>
+```
+Replace ``YOUR_CLUSTER_NAME``, ``YOUR_KEY_NAME`` and ``YOUR_SUBNET_ID``. This step may take up to 5 minutes.
+
+#### Step 5. Prepare script and dynamic port-forwarding
+Once the EMR cluster is running and waiting, you can proceed with following steps:
+- Secure copy the script to EMR Master Node:
+<br    >``scp -i ~/.ssh/<YOUR_KEY_FILE_NAME>.pem etl.py hadoop@<MASTER_NODE_PUBLIC_DNS>:/home/hadoop``
+- Open SSH tunnel on your machine (assume using port **8157**)
+<br    >``ssh -i ~/.ssh/<YOUR_KEY_FILE_NAME>.pem -ND 8157 hadoop@<MASTER_NODE_PUBLIC_DNS>``<br/>
+Configure and use Proxy on your browser to use Spark UI. For more info, reference to this [guide](https://docs.aws.amazon.com/emr/latest/ManagementGuide/emr-connect-master-node-proxy.html)
+- Create S3 bucket named ``udacity-de-datalake`` for your IAM user and make sure your EMR cluster has **Full Access** to this bucket.<br/>
+
+Replace ``YOUR_KEY_FILE_NAME`` and ``MASTER_NODE_PUBLIC_DNS`` for the commands above.
+
+#### Step 6. SSH to Master Node and submit spark job
+- SSH to Master Node:
+<br    >``ssh -i ~/.ssh/<YOUR_KEY_FILE_NAME>.pem hadoop@<MASTER_NODE_PUBLIC_DNS>``
+- Submit spark job:
+<br    >``spark-submit --master yarn etl.py``<br/>
+
+Replace ``YOUR_KEY_FILE_NAME`` and ``MASTER_NODE_PUBLIC_DNS`` for the commands above. The spark job should finish within 10 minutes. 
+In the mean time, you can monitor the spark job using Spark UI.
+
+#### Step 7. Check Logging and S3 bucket
+- To make sure spark job is successful, view the log file in **Master Node terminal**:
+<br    >``cat spark-etl-log.log``
+![erd](assets/images/log.jpg)
+- To view stored files in S3 buckets, you should have something like this in your bucket ``udacity-de-datalake``:
+![erd](assets/images/bucket.jpg)
 
 
 ### Sample Queries (on AWS EMR notebook)
+We only provide instructions on runing queries on EMR notebook, however the same queries can also be run locally if you choose to run the project locally.
+
+#### Create EMR Notebook
+Create an EMR notebook and attach the notebook to previously created cluster.
+
+#### Run Queries in notebook
+
+## Clean up
+Terminate EMR cluster and delete S3 bucket ``udacity-de-datalake``.
 
 ## Resources
 1. [AWS EMR Management](https://docs.aws.amazon.com/emr/latest/ManagementGuide/index.html): how to create and manage EMR clusters on AWS.
