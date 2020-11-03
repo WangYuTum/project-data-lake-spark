@@ -392,14 +392,13 @@ def process_songplay_table(spark, df_song_in, df_log_in, df_time_in, output_data
 def main():
 
     spark = create_spark_session()
+    logging.basicConfig(filename='./spark-etl-log.log', filemode='w', level=logging.INFO)
 
     ### Run on local machine (need to have song, log data downloaded on the machine)
-    #logging.basicConfig(filename='./data/out/spark-etl-log.log', filemode='w', level=logging.INFO)
     #input_data = "./data/"
     #output_data = "./data/out/"
 
     ### Run on AWS EMR cluster
-    logging.basicConfig(filename='./spark-etl-log.log', filemode='w', level=logging.INFO)
     input_data = "s3://udacity-dend/"
     output_data = "s3://udacity-de-datalake/"
 
