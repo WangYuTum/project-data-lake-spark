@@ -138,9 +138,7 @@ We only provide instructions on runing queries on EMR notebook, however the same
 Create an EMR notebook and attach the notebook to previously(or newly) created cluster.
 
 #### Run Queries in notebook
-
-## Clean up
-Terminate EMR cluster and delete S3 bucket ``udacity-de-datalake``.
+Check ``emr-nb-query.ipynb`` for complete info. Note that this notebook can only run on EMR cluster.
 
 ## Resources
 1. [AWS EMR Management](https://docs.aws.amazon.com/emr/latest/ManagementGuide/index.html): how to create and manage EMR clusters on AWS.
