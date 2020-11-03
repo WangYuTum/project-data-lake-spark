@@ -126,7 +126,7 @@ In the mean time, you can monitor the spark job using Spark UI.
 #### Step 7. Check Logging and S3 bucket
 - To make sure spark job is successful, view the log file in **Master Node terminal**:
 <br    >``cat spark-etl-log.log``
-![erd](assets/images/log.jpg)
+<br    ><img src="assets/images/log.jpg" width="480" height="320">
 - To view stored files in S3 buckets, you should have something like this in your bucket ``udacity-de-datalake``:
 ![erd](assets/images/bucket.jpg)
 
