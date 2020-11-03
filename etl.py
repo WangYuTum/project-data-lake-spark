@@ -2,11 +2,10 @@ import logging
 from datetime import datetime
 import os
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import udf, col
+from pyspark.sql.functions import udf, col, monotonically_increasing_id
 from pyspark.sql.functions import year, month, hour, weekofyear, date_format, dayofyear, dayofweek
 from pyspark.sql.types import DecimalType, ShortType, StringType, IntegerType, LongType, TimestampType
 from pyspark.sql.types import StructField, StructType
-from pyspark.sql.functions import monotonically_increasing_id
 
 
 ### Use aws credential files or export ENV_VARIABLE=<value> instead
@@ -17,13 +16,29 @@ from pyspark.sql.functions import monotonically_increasing_id
 
 
 def create_spark_session():
+    '''
+    Create a spark session, use a newer version of hadoop-aws
+
+    Return(s):
+        spark: a pyspark session object
+    '''
+
     spark = SparkSession \
         .builder \
-        .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:2.7.0") \
+        .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.2.1") \
         .getOrCreate()
     return spark
 
 def parse_song_data(spark, input_data):
+    '''
+    Parse JSON files of song data
+
+    Arg(s):
+        spark: a pyspark session object
+        input_data: AWS S3 bucket path
+    Return(s):
+        df_song: parsed DataFrame of song data
+    '''
 
     # get filepath to song data
     song_data = input_data + "song_data"
@@ -42,6 +57,7 @@ def parse_song_data(spark, input_data):
         StructField('artist_longitude', DecimalType(9,6), True)
     ])
 
+    # load json files and store corrupted records in field '__corrupted'
     df_parsed_song = spark.read.json(
         song_data,
         schema = schema_parse_song, 
@@ -49,12 +65,12 @@ def parse_song_data(spark, input_data):
         mode = 'PERMISSIVE',
         columnNameOfCorruptRecord='__corrupted').cache()
 
+    # logging info
     logging.info("Total number of parsed song records: {}".format(df_parsed_song.count()))
-
     logging.info("Number of corrupted song records {}"\
         .format(df_parsed_song.filter("__corrupted is NOT NULL").count()))
 
-    # get the non-corrupted records
+    # get the non-corrupted records and logging info
     df_song = df_parsed_song.filter("__corrupted is NULL").drop("__corrupted")
     logging.info("Number of valid song records: {}".format(df_song.count()))
 
@@ -62,6 +78,17 @@ def parse_song_data(spark, input_data):
 
 
 def process_song_data(spark, df_song_in, output_data):
+    '''
+    Process song DataFrame and extract columns for songs and artists tables
+
+    Arg(s):
+        spark: a pyspark session object
+        df_song_in: parsed DataFrame of song data
+        output_data: AWS S3 bucket for saving results
+    Return(s):
+        songs_final: songs table/DataFrame, cleaned and typed
+        artists_final: artists table/DataFrame, cleaned and typed
+    '''
 
     ### get songs data
     df_songs = df_song_in.select(['song_id','title', 'artist_id', 'year','duration'])
@@ -103,8 +130,14 @@ def process_song_data(spark, df_song_in, output_data):
     df_artists = df_artists.dropna(how='any', subset=['artist_id', 'name'])
     # drop empty strings
     df_artists = df_artists.filter("artist_id != '' AND name != ''")
-    # truncate location, name, artist_id
-    trunc_loc = udf(lambda x: x[:256])
+    # truncate location. location might be NULL/None
+    @udf
+    def trunc_loc(line):
+        if line is None:
+            return line
+        else:
+            return line[:256]
+    # truncate name, artist_id
     trunc_name = udf(lambda x: x[:256])
     trunc_ids = udf(lambda x: x[:50])
     df_artists = df_artists.withColumn('location', trunc_loc(df_artists['location']))
@@ -130,6 +163,15 @@ def process_song_data(spark, df_song_in, output_data):
 
 
 def parse_log_data(spark, input_data):
+    '''
+    Parse JSON files of log data
+
+    Arg(s):
+        spark: a pyspark session object
+        input_data: AWS S3 bucket path
+    Return(s):
+        df_log: parsed DataFrame of log data
+    '''
 
     # get filepath to log data file
     log_data = input_data + "log_data"
@@ -151,6 +193,7 @@ def parse_log_data(spark, input_data):
         StructField('userId', StringType(), True)
     ])
 
+    # load JSON files and store corrupted records in field '__corrupted'
     df_log_parsed = spark.read.json(
         log_data, 
         schema = schema_parse_log, 
@@ -158,14 +201,14 @@ def parse_log_data(spark, input_data):
         mode = 'PERMISSIVE',
         columnNameOfCorruptRecord='__corrupted').cache()
 
+    # logging info
     logging.info("Total number of parsed log records: {}".format(df_log_parsed.count()))
-
-    logging.info("Number of corrupted song records {}"\
+    logging.info("Number of corrupted log records {}"\
         .format(df_log_parsed.filter("__corrupted is NOT NULL").count()))
 
     # get the non-corrupted records
     df_log = df_log_parsed.filter("__corrupted is NULL").drop("__corrupted")
-    logging.info("Number of valid song records: {}".format(df_log.count()))
+    logging.info("Number of valid log records: {}".format(df_log.count()))
 
     # filter by actions for song plays
     df_log = df_log.filter("page == 'NextSong'")
@@ -174,6 +217,17 @@ def parse_log_data(spark, input_data):
 
 
 def process_log_data(spark, df_log_in, output_data):
+    '''
+    Process log DataFrame and extract columns for users, time tables
+
+    Arg(s):
+        spark: a pyspark session object
+        df_log_in: parsed DataFrame of log data
+        output_data: AWS S3 bucket for saving results
+    Return(s):
+        users_final: users table/DataFrame, cleaned and typed
+        time_final: time table/DataFrame, cleaned and typed
+    '''
 
     ### get users
     df_users = df_log_in.select(
@@ -185,24 +239,19 @@ def process_log_data(spark, df_log_in, output_data):
 
     # drop nulls
     df_users = df_users.dropna(how='any', subset=['user_id', 'first_name', 'last_name'])
-
     # drop empty strings
     df_users = df_users.filter("user_id != '' AND first_name != '' AND last_name != ''")
-
     # truncate song_id, title, artist_id
     trunc_id_name = udf(lambda x: x[:50], StringType())
     df_users = df_users.withColumn('user_id', trunc_id_name(df_users['user_id']))
     df_users = df_users.withColumn('first_name', trunc_id_name(df_users['first_name']))
     df_users = df_users.withColumn('last_name', trunc_id_name(df_users['last_name']))
-
     # convert user_id to Integer and drop records if type casting failed
     df_users = df_users.withColumn('user_id', df_users.user_id.cast(IntegerType()))
     df_users = df_users.dropna(how='any', subset=['user_id'])
-
     # drop duplicates only on user_id. This is because there might be a user_id with 2 levels.
     # In distributed setting, the ordering of which level is loaded cannot be predicted
     df_users = df_users.dropDuplicates(subset=['user_id'])
-
     # impose an explict schema for not-nullable fields
     users_schema = StructType([
         StructField('user_id', IntegerType(), nullable=False),
@@ -221,14 +270,10 @@ def process_log_data(spark, df_log_in, output_data):
     ### get timestamps
     # drop NULL and duplicates
     df_time = df_log_in.select('ts').dropna().dropDuplicates()
-
     # convert timestamp
     get_timestamp = udf(lambda x: datetime.fromtimestamp(x/1000.0), TimestampType())
     df_time = df_time.withColumn('start_time', get_timestamp(df_time.ts))
-
-    # drop raw format
     df_time = df_time.drop('ts')
-
     # extract fields: hour, dayofyear, weekofyear, month, year, dayofweek
     df_time = df_time.withColumn('hour', hour(df_time['start_time']))
     df_time = df_time.withColumn('day', dayofyear(df_time['start_time']))
@@ -236,7 +281,6 @@ def process_log_data(spark, df_log_in, output_data):
     df_time = df_time.withColumn('month', month(df_time['start_time']))
     df_time = df_time.withColumn('year', year(df_time['start_time']))
     df_time = df_time.withColumn('weekday', dayofweek(df_time['start_time']))
-
     # impose an explict schema for not-nullable fields
     time_schema = StructType([
         StructField('start_time', TimestampType(), nullable=False),
@@ -257,6 +301,18 @@ def process_log_data(spark, df_log_in, output_data):
 
 
 def process_songplay_table(spark, df_song_in, df_log_in, df_time_in, output_data):
+    '''
+    Extract columns for songplay table from log and song data
+
+    Arg(s):
+        spark: a pyspark session object
+        df_song_in: parsed DataFrame of song data
+        df_log_in: parsed DataFrame of log data
+        df_time_in: parsed DataFrame of time dimension, cleaned and typed
+        output_data: AWS S3 bucket for saving results
+    Return(s):
+        songplay_final: songplays table/DataFrame, cleaned and typed
+    '''
 
     # select sub fields
     df_log_sub = df_log_in.select(monotonically_increasing_id().alias('songplay_id'),
@@ -290,8 +346,13 @@ def process_songplay_table(spark, df_song_in, df_log_in, df_time_in, output_data
     df_songplay = df_songplay.withColumn('user_id', df_songplay.user_id.cast(IntegerType()))
     df_songplay = df_songplay.dropna(how='any', subset=['user_id'])
 
-    # truncate long strings
-    trunc_long_str = udf(lambda x: x[:256])
+    # truncate long strings for location, user_agent which might be NULL/None
+    @udf
+    def trunc_long_str(line):
+        if line is None:
+            return line
+        else:
+            return line[:256]
     df_songplay = df_songplay.withColumn('location', trunc_long_str(df_songplay['location']))
     df_songplay = df_songplay.withColumn('user_agent', trunc_long_str(df_songplay['user_agent']))
 
@@ -330,17 +391,18 @@ def process_songplay_table(spark, df_song_in, df_log_in, df_time_in, output_data
 
 def main():
 
-    # config for logging
-    logging.basicConfig(filename='./spark-etl-log.log', level=logging.INFO)
+    logging.basicConfig(filename='./spark-etl-log.log', filemode='w', level=logging.INFO)
 
-    spark = create_spark_session()
-    input_data = "s3://udacity-dend/"
-    output_data = "s3://udacity-de-datalake/"
-
+    ### Run on local machine (need to have song, log data downloaded on the machine)
     #logging.basicConfig(filename='./data/out/spark-etl-log.log', filemode='w', level=logging.INFO)
     #spark = create_spark_session()
     #input_data = "./data/"
     #output_data = "./data/out/"
+
+    ### Run on AWS EMR cluster
+    spark = create_spark_session()
+    input_data = "s3://udacity-dend/"
+    output_data = "s3://udacity-de-datalake/"
 
     # process song data
     df_song = parse_song_data(spark, input_data)
@@ -350,7 +412,7 @@ def main():
     df_log = parse_log_data(spark, input_data)
     users_final, time_final = process_log_data(spark, df_log, output_data)
 
-    # process songplay records, requires joing tables from previous steps
+    # process songplay records, requires joing tables/DataFrames from previous steps
     songplay_final = process_songplay_table(spark, df_song, df_log, time_final, output_data)
 
     # stop spark and close logging
