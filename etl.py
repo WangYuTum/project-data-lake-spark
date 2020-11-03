@@ -1,4 +1,3 @@
-import configparser
 import logging
 from datetime import datetime
 import os
@@ -332,16 +331,16 @@ def process_songplay_table(spark, df_song_in, df_log_in, df_time_in, output_data
 def main():
 
     # config for logging
-    #logging.basicConfig(filename='s3://udacity-de-datalake/spark-etl-log.log', level=logging.INFO)
+    logging.basicConfig(filename='./spark-etl-log.log', level=logging.INFO)
 
-    #spark = create_spark_session()
-    #input_data = "s3://udacity-dend/"
-    #output_data = "s3://udacity-de-datalake/"
-
-    logging.basicConfig(filename='./data/out/spark-etl-log.log', filemode='w', level=logging.INFO)
     spark = create_spark_session()
-    input_data = "./data/"
-    output_data = "./data/out/"
+    input_data = "s3://udacity-dend/"
+    output_data = "s3://udacity-de-datalake/"
+
+    #logging.basicConfig(filename='./data/out/spark-etl-log.log', filemode='w', level=logging.INFO)
+    #spark = create_spark_session()
+    #input_data = "./data/"
+    #output_data = "./data/out/"
 
     # process song data
     df_song = parse_song_data(spark, input_data)
